@@ -187,63 +187,107 @@ export const api = {
   
   async getSession(sessionId: string): Promise<GameSession> {
     try {
+      console.log('Fetching session with ID:', sessionId);
+      
+      if (!sessionId) {
+        console.error('Invalid session ID provided');
+        throw new Error('Invalid session ID');
+      }
+      
       // Get session data
       const { data: sessionData, error: sessionError } = await supabase
         .from('game_sessions')
         .select('*')
-        .eq('id', sessionId)
-        .single();
+        .eq('id', sessionId);
       
-      if (sessionError) throw sessionError;
+      // Check if we got any results
+      if (sessionError) {
+        console.error('Error fetching session:', sessionError);
+        throw new Error(`Failed to fetch session: ${sessionError.message}`);
+      }
+      
+      if (!sessionData || sessionData.length === 0) {
+        console.error('No session found with ID:', sessionId);
+        throw new Error(`Session not found: ${sessionId}`);
+      }
+      
+      // Use the first session found
+      const sessionRecord = sessionData[0];
+      console.log('Found session:', sessionRecord);
       
       // Get all flags for the session
-      const { data: flagsData, error: flagsError } = await supabase
-        .from('flags')
-        .select('*')
-        .eq('session_id', sessionId);
-      
-      if (flagsError) throw flagsError;
+      let flags: Flag[] = [];
+      try {
+        const { data: flagsData, error: flagsError } = await supabase
+          .from('flags')
+          .select('*')
+          .eq('session_id', sessionId);
+        
+        if (flagsError) {
+          console.error('Error fetching flags:', flagsError);
+          // Continue with empty flags array instead of throwing
+        } else {
+          console.log(`Found ${flagsData?.length || 0} flags for session`);
+          
+          // Format flag data for the client
+          flags = (flagsData || []).map(flag => ({
+            id: flag.id,
+            position: flag.position as Position,
+            status: flag.status as 'available' | 'captured',
+            capturedBy: flag.captured_by,
+            capturedAt: flag.captured_at ? new Date(flag.captured_at) : undefined,
+          }));
+        }
+      } catch (flagError) {
+        console.error('Error processing flags:', flagError);
+        // Continue with empty flags array
+      }
       
       // Get all players for the session
-      const { data: playersData, error: playersError } = await supabase
-        .from('players')
-        .select('*')
-        .eq('session_id', sessionId);
+      let players: Player[] = [];
+      try {
+        const { data: playersData, error: playersError } = await supabase
+          .from('players')
+          .select('*')
+          .eq('session_id', sessionId);
+        
+        if (playersError) {
+          console.error('Error fetching players:', playersError);
+          // Continue with empty players array instead of throwing
+        } else {
+          console.log(`Found ${playersData?.length || 0} players for session`);
+          
+          // Format player data for the client
+          players = (playersData || []).map(p => ({
+            id: p.id,
+            nickname: p.nickname,
+            avatar: p.avatar,
+            position: p.position as Position,
+            score: p.score,
+            status: p.status as 'active' | 'exited' | 'disconnected',
+          }));
+        }
+      } catch (playerError) {
+        console.error('Error processing players:', playerError);
+        // Continue with empty players array
+      }
       
-      if (playersError) throw playersError;
-      
-      // Format data for the client
-      const flags: Flag[] = flagsData.map(flag => ({
-        id: flag.id,
-        position: flag.position as Position,
-        status: flag.status as 'available' | 'captured',
-        capturedBy: flag.captured_by,
-        capturedAt: flag.captured_at ? new Date(flag.captured_at) : undefined,
-      }));
-      
-      const players: Player[] = playersData.map(p => ({
-        id: p.id,
-        nickname: p.nickname,
-        avatar: p.avatar,
-        position: p.position as Position,
-        score: p.score,
-        status: p.status as 'active' | 'exited' | 'disconnected',
-      }));
-      
+      // Create the session object with all the data we have
       const session: GameSession = {
         id: sessionId,
-        settings: sessionData.settings as GameSettings,
+        settings: sessionRecord.settings as GameSettings,
         players,
         flags,
-        status: sessionData.status as 'waiting' | 'in-progress' | 'completed',
-        startTime: sessionData.start_time ? new Date(sessionData.start_time) : undefined,
-        endTime: sessionData.end_time ? new Date(sessionData.end_time) : undefined,
+        status: sessionRecord.status as 'waiting' | 'in-progress' | 'completed',
+        startTime: sessionRecord.start_time ? new Date(sessionRecord.start_time) : undefined,
+        endTime: sessionRecord.end_time ? new Date(sessionRecord.end_time) : undefined,
       };
       
+      console.log('Returning complete session object:', session);
       return session;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error getting session:', error);
-      throw error;
+      throw new Error(`Failed to load session: ${error.message || 'Unknown error'}`);
     }
   },
   

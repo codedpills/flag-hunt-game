@@ -36,6 +36,11 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
   playerAvatar = 'orange', // Default to orange if not provided
   onRendered, // Add onRendered callback
 }) => {
+  if (!playerPosition) {
+    console.error('Player position is undefined.');
+    return;
+  }
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [mapObjects, setMapObjects] = useState<MapObject[]>([]);

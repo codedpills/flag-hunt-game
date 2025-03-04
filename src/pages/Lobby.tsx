@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Flag, Users, Clock, Target, Share2 } from 'lucide-react';
 import Button from '../components/common/Button';
-import { useGameStore } from '../store/gameStore';
+import { useSessionManager } from '../hooks/useSessionManager';
 import { GameMode, GameSettings } from '../types/game';
-import { api } from '../services/api';
+import { useGameStore } from '../store/gameStore';
 
 const Lobby: React.FC = () => {
   const navigate = useNavigate();
-  const { createSession, currentPlayer } = useGameStore();
-  
+  const { createSession, session, getSession } = useSessionManager();
+
   const [settings, setSettings] = useState<GameSettings>({
     gameMode: 'normal',
     playerCount: 10,
@@ -21,14 +21,28 @@ const Lobby: React.FC = () => {
   const [inviteLink, setInviteLink] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
-  
-  // Redirect to home if no player is set
+
+  // Load existing session if available
   useEffect(() => {
-    if (!currentPlayer) {
+    const sessionId = localStorage.getItem('sessionId');
+    const playerName = localStorage.getItem('player');
+    
+    // If we don't have player information, redirect to home
+    if (!playerName) {
       console.log('No current player, redirecting to home');
       navigate('/');
+      return;
     }
-  }, [currentPlayer, navigate]);
+    
+    // If we have a session ID but no session loaded, try to load it
+    if (sessionId && !session) {
+      console.log('Trying to load existing session:', sessionId);
+      getSession(sessionId).catch(error => {
+        console.error('Failed to load session:', error);
+        // If we can't load the session, we'll create a new one when the user clicks 'Create Game'
+      });
+    }
+  }, [navigate, session, getSession]);
   
   const handleGameModeChange = (mode: GameMode) => {
     setSettings({ ...settings, gameMode: mode });
@@ -83,28 +97,59 @@ const Lobby: React.FC = () => {
     }, 2000);
   };
   
-  const startGame = async () => {
-    // Play sound effect
-    const soundEffect = new Audio('https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3');
-    soundEffect.volume = 0.5;
-    soundEffect.play().catch(e => console.log("Audio play error:", e));
-    
-    setIsCreatingSession(true);
-    
+  const handleCreateGame = async () => {
     try {
-      // Create session via API
-      const session = await api.createSession(settings);
+      setIsCreatingSession(true);
       
-      // Update local state
-      createSession(settings);
+      // Make sure we have a player set before creating a session
+      const playerName = localStorage.getItem('player');
+      const avatar = localStorage.getItem('avatar');
+      if (!playerName || !avatar) {
+        console.error('No player information found');
+        navigate('/');
+        return;
+      }
       
-      // Navigate to game
-      navigate('/game');
+      console.log('Creating new game session with settings:', settings);
+      
+      // Create a new session with the current settings
+      const newSession = await createSession(settings);
+      console.log('New session created:', newSession);
+      
+      // Store the session ID in localStorage for future reference
+      localStorage.setItem('sessionId', newSession.id);
+      
+      // Create a player object
+      const playerId = `player-${Date.now()}`;
+      const player = {
+        id: playerId,
+        nickname: playerName,
+        avatar: avatar,
+        position: { x: 0, y: 0 },
+        score: 0,
+        status: 'active' as const
+      };
+      
+      // Set the current player in the store
+      const gameStore = useGameStore.getState();
+      gameStore.setCurrentPlayer(player);
+      
+      // Update the session with the player included
+      const updatedPlayers = [...(newSession.players || []), player];
+      gameStore.updateSession({
+        ...newSession,
+        players: updatedPlayers
+      });
+      
+      // Wait a moment to ensure the session is properly created
+      setTimeout(() => {
+        // Navigate to game
+        console.log('Navigating to game with session ID:', newSession.id);
+        navigate('/game');
+      }, 500);
     } catch (error) {
       console.error('Error creating session:', error);
-      // Fallback to local session creation
-      createSession(settings);
-      navigate('/game');
+      alert('Failed to create game session. Please try again.');
     } finally {
       setIsCreatingSession(false);
     }
@@ -115,10 +160,10 @@ const Lobby: React.FC = () => {
   
   // Check if player is loaded
   useEffect(() => {
-    if (currentPlayer) {
+    if (localStorage.getItem('player')) {
       setIsLoading(false);
     }
-  }, [currentPlayer]);
+  }, []);
   
   // Show loading state or redirect if no player
   if (isLoading) {
@@ -141,7 +186,7 @@ const Lobby: React.FC = () => {
             <h1 className="text-2xl font-bold text-white">Game Lobby</h1>
           </div>
           <div className="text-white">
-            Playing as: <span className="font-bold">{currentPlayer?.nickname || 'Guest'}</span>
+            Playing as: <span className="font-bold">{localStorage.getItem('player')}</span>
           </div>
         </div>
       </header>
@@ -324,7 +369,7 @@ const Lobby: React.FC = () => {
             <Button 
               variant="primary" 
               size="lg" 
-              onClick={startGame}
+              onClick={handleCreateGame}
               disabled={isCreatingSession}
             >
               {isCreatingSession ? 'Creating Game...' : 'Start Game'}

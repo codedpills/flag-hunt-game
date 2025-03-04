@@ -20,6 +20,7 @@ interface GameState {
   updateSession: (session: GameSession) => void;
   updatePlayers: (players: Player[]) => void;
   updateFlags: (flags: Flag[]) => void;
+  setCurrentPlayer: (player: Player) => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -164,5 +165,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         flags,
       },
     });
+  },
+  
+  setCurrentPlayer: (player: Player) => {
+    console.log('Setting current player:', player);
+    set({ currentPlayer: player });
   },
 }));
