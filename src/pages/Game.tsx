@@ -391,8 +391,8 @@ const Game: React.FC = () => {
   // Main game content
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex flex-col">
-      {/* Game header with stats */}
-      <div className="bg-white shadow-md p-4 flex justify-between items-center">
+      {/* Game header with stats - Add sticky positioning */}
+      <div className="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-50">
         <div className="flex items-center space-x-6">
           <div className="flex items-center">
             <Clock className="h-5 w-5 text-blue-600 mr-2" />
@@ -432,8 +432,8 @@ const Game: React.FC = () => {
           </Button>
         </div>
       </div>
-      {/* Game canvas */}
-      <div className="flex-1 relative overflow-hidden">
+      {/* Game canvas - Ensure proper scrolling behavior */}
+      <div className="flex-1 relative overflow-auto">
         {session && currentPlayer && currentPlayer.position && (
           <div>
             {console.log('Current player position before rendering MapCanvas:', currentPlayer?.position)}
