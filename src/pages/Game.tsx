@@ -84,6 +84,7 @@ const Game: React.FC = () => {
   const currentPlayerRef = useRef(currentPlayer);
   const timeLeftRef = useRef(timeLeft);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerInitializedRef = useRef<boolean>(false);
 
   // Update refs
   useEffect(() => {
@@ -155,12 +156,9 @@ const Game: React.FC = () => {
           status: 'active' as const
         };
 
-        // Set the current player directly
-        const gameStore = useGameStore.getState();
-        gameStore.setCurrentPlayer(tempPlayer);
-
-        // Update the session with the player
-        gameStore.updateSession({
+        // Use the imported hooks instead of direct store access
+        useGameStore.getState().setCurrentPlayer(tempPlayer);
+        useGameStore.getState().updateSession({
           ...session,
           players: [...(session.players || []), tempPlayer]
         });
@@ -178,52 +176,6 @@ const Game: React.FC = () => {
       return cleanup;
     }
   }, [sessionFromManager, startSessionTimer]);
-
-  useEffect(() => {
-    console.log('Session:', JSON.stringify(session, null, 2)); // Log session details
-    console.log('Current Player:', JSON.stringify(currentPlayer, null, 2)); // Log player details
-
-    // Validate session and current player
-    if (!session || !session.settings || !currentPlayer || !currentPlayer.id || !currentPlayer.position) {
-      console.log('Invalid session or player data, cannot start timer.');
-      return;
-    }
-
-    if (session.settings.duration && !isGameStarted) {
-      // Set initial time from session settings
-      const initialTime = session.settings.duration * 60; // Convert minutes to seconds
-      setTimeLeft(initialTime);
-      console.log('Initial Time Left:', initialTime); // Log initial time left
-
-      // Start timer only if it's not already running
-      if (!timerRef.current) {
-        timerRef.current = setInterval(() => {
-          setTimeLeft(prevTime => {
-            console.log('Time Left Before Update:', prevTime);
-            const newTime = prevTime - 1;
-            console.log('Timer tick:', newTime); // Log the current time
-            if (newTime <= 0) {
-              // Game over when time runs out
-              clearInterval(timerRef.current);
-              timerRef.current = null; // Reset timer reference
-              setIsGameOver(true);
-              return 0;
-            }
-            console.log('Time Left After Update:', newTime);
-            return newTime;
-          });
-        }, 1000);
-
-        console.log('Timer started'); // Log when timer starts
-      }
-
-      // Clean up timer on unmount
-      return () => {
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = null; // Reset timer reference on cleanup
-      };
-    }
-  }, [session, currentPlayer, isGameStarted]);
 
   useEffect(() => {
     if (session && currentPlayer && currentPlayer.position) {
@@ -246,12 +198,6 @@ const Game: React.FC = () => {
     }
   }, [currentPlayer, session]);
 
-  // Define Position type
-  type Position = {
-    x: number;
-    y: number;
-  };
-
   // Memoize event handlers
   const handleFlagCapture = useCallback((flagId: string) => {
     if (!currentPlayer || !session) return;
@@ -266,15 +212,14 @@ const Game: React.FC = () => {
     }
 
     // Check if all flags are captured
-    const newCapturedCount = (currentPlayer.capturedFlags?.length || 0) + 1;
+    const newCapturedCount = capturedFlagsCount + 1;
     setCapturedFlagsCount(newCapturedCount);
 
     if (newCapturedCount >= flags.length) {
-      // All flags captured, end game
+      console.log('All flags captured! Game over.');
       setIsGameOver(true);
-      if (timerRef.current) clearInterval(timerRef.current);
     }
-  }, [currentPlayer, session, flags.length, captureFlag, soundEnabled]);
+  }, [currentPlayer, session, flags.length, captureFlag, soundEnabled, capturedFlagsCount]);
 
   const handlePlayerMove = useCallback((position: Position) => {
     if (!currentPlayer || !session) return;
@@ -325,12 +270,16 @@ const Game: React.FC = () => {
         // Connect to WebSocket
         webSocketService.connect(session.id, currentPlayer.id);
 
-        // Listen for player updates
-        const handlePlayerUpdate = (players: any[]) => {
-          setOtherPlayers(players.filter(p => p.id !== currentPlayer.id));
-        };
-
-        webSocketService.onPlayerUpdate(handlePlayerUpdate);
+        // Use a safer approach to handle player updates
+        // This avoids the error if onPlayerUpdate doesn't exist
+        if (typeof webSocketService.onPlayerUpdate === 'function') {
+          webSocketService.onPlayerUpdate((players: any[]) => {
+            setOtherPlayers(players.filter(p => p.id !== currentPlayer.id));
+          });
+        } else {
+          console.log("WebSocket service doesn't have onPlayerUpdate method");
+          // Use a fallback approach or just display local players
+        }
 
         console.log('WebSocket connected successfully');
       } catch (error) {
@@ -344,6 +293,87 @@ const Game: React.FC = () => {
       webSocketService.disconnect();
     };
   }, [session, currentPlayer, setError]);
+
+  // DEBUG: Add these to confirm session settings
+  useEffect(() => {
+    if (session?.settings) {
+      console.log('DEBUG Session settings:', {
+        duration: session.settings.duration,
+        gameMode: session.settings.gameMode,
+      });
+    }
+  }, [session]);
+
+  // ADD this single, reliable timer implementation
+  useEffect(() => {
+    console.log("⏰ Timer effect executing. Timer ref:", !!timerRef.current);
+    
+    // Clear any existing timer to avoid duplicates
+    if (timerRef.current) {
+      console.log("⏰ Clearing existing timer before setting up a new one");
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+      timerInitializedRef.current = false;
+    }
+    
+    // Exit if no session
+    if (!session) {
+      console.log("⏰ No session available, waiting...");
+      return;
+    }
+
+    // Get duration from settings or use default
+    const minutes = session.settings?.duration || 5; // Default to 5 minutes
+    const durationInSeconds = minutes * 60;
+    
+    console.log(`⏰ Starting timer for ${minutes} minutes (${durationInSeconds} seconds)`);
+    
+    // Set initial time
+    setTimeLeft(durationInSeconds);
+    
+    // Start timer with a direct reference to the interval ID
+    const timerId = setInterval(() => {
+      setTimeLeft(prevTime => {
+        const newTime = prevTime - 1;
+        
+        // Less frequent logging
+        if (newTime % 10 === 0 || newTime < 10) {
+          console.log(`⏰ Timer: ${Math.floor(newTime / 60)}:${(newTime % 60).toString().padStart(2, '0')}`);
+        }
+        
+        if (newTime <= 0) {
+          console.log('⏰ Time up! Game over.');
+          clearInterval(timerId);
+          setIsGameOver(true);
+          return 0;
+        }
+        return newTime;
+      });
+    }, 1000);
+    
+    // Store the timer reference
+    timerRef.current = timerId;
+    console.log("⏰ Timer started with ID:", timerId);
+    
+    // Cleanup function
+    return () => {
+      console.log("⏰ Cleaning up timer with ID:", timerId);
+      clearInterval(timerId);
+      timerRef.current = null;
+    };
+  }, []); // Empty dependency array - only run ONCE when component mounts
+
+  // Keep the game over effect for cleanup
+  useEffect(() => {
+    if (isGameOver) {
+      console.log('Game over state detected');
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      // Game over logic
+    }
+  }, [isGameOver]);
 
   // Conditional rendering based on the current state
   if (isLoading || !session) {
