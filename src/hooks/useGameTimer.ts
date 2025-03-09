@@ -82,14 +82,12 @@ export const useGameTimer = ({
 
   // Start timer function
   const startTimer = () => {
-    console.log(`⏰ Starting timer for ${timeLeftRef.current} seconds`);
     setIsRunning(true);
     isRunningRef.current = true;
   };
 
   // Pause timer function
   const pauseTimer = () => {
-    console.log("⏰ Pausing timer");
     setIsRunning(false);
     isRunningRef.current = false;
   };
@@ -97,7 +95,6 @@ export const useGameTimer = ({
   // Reset timer function
   const resetTimer = (newDuration?: number) => {
     const resetValue = newDuration || duration;
-    console.log(`⏰ Resetting timer to ${resetValue} seconds`);
     timeLeftRef.current = resetValue;
     setTimeLeft(resetValue);
   };
@@ -111,7 +108,6 @@ export const useGameTimer = ({
   // When sessionId changes, reset the timer
   useEffect(() => {
     if (sessionId) {
-      console.log(`⏰ Session ID changed to ${sessionId}, resetting timer`);
       resetTimer();
       if (autoStart) startTimer();
     }

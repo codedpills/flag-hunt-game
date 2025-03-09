@@ -57,8 +57,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { currentPlayer, session } = get();
     if (!currentPlayer) return;
     
-    console.log('Updating player position in store:', position);
-    
     // Update current player position
     const updatedPlayer = {
       ...currentPlayer,
