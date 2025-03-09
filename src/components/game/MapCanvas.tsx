@@ -382,7 +382,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
   
   // Animation loop for player movement
   useEffect(() => {
-    console.log('Setting up animation loop. Moving:', isMoving, 'Target:', targetPosition);
     
     const movePlayer = (timestamp: number) => {
       if (!isMoving || !targetPosition) {
@@ -401,12 +400,9 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       const dy = targetPosition.y - playerPosition.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      console.log('Current distance to target:', distance);
       
       const moveSpeed = 5;
       if (distance < moveSpeed) {
-        // Reached target position
-        console.log('Reached target position');
         onMove(targetPosition);
         setIsMoving(false);
         setTargetPosition(null);
@@ -419,7 +415,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       const nextY = playerPosition.y + dy * ratio;
       const nextPosition = { x: nextX, y: nextY };
       
-      console.log('Moving to next position:', nextPosition);
       
       // Check for collisions
       const wallCollision = checkWallCollision(nextPosition);
@@ -435,8 +430,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
           moveAudioRef.current.play().catch(e => console.log("Audio play error:", e));
         }
       } else {
-        // Stop moving if collision detected
-        console.log('Collision detected, stopping movement');
         setIsMoving(false);
         setTargetPosition(null);
         
@@ -454,14 +447,12 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     
     // Start animation loop if we're moving
     if (isMoving && targetPosition) {
-      console.log('Starting animation loop');
       animationFrameIdRef.current = requestAnimationFrame(movePlayer);
     }
     
     return () => {
       // Clean up animation frame
       if (animationFrameIdRef.current) {
-        console.log('Cleaning up animation frame');
         cancelAnimationFrame(animationFrameIdRef.current);
         animationFrameIdRef.current = 0; // Reset to known value
       }
@@ -711,8 +702,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     const headSize = 20;
     const color = fruitColors[playerAvatar] || '#ff9900';
     
-    // Debug player position
-    console.log('Drawing player at canvas center. Player world position:', playerPosition);
     
     // Draw head based on avatar
     switch (playerAvatar) {
@@ -955,8 +944,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
   
   // Handle keyboard movement with debouncing to prevent too many updates
   useEffect(() => {
-    console.log('Setting up keyboard event listener. Current player position:', playerPosition);
-    console.log('onMove function available:', !!onMove);
     
     // Track pressed keys to allow multiple key presses
     const pressedKeys = new Set<string>();
@@ -968,7 +955,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
         e.preventDefault();
         pressedKeys.add(e.key.toLowerCase());
-        console.log('Key pressed:', e.key, 'Active keys:', Array.from(pressedKeys));
         processMovement();
       }
     };
@@ -976,7 +962,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     const handleKeyUp = (e: KeyboardEvent) => {
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
         pressedKeys.delete(e.key.toLowerCase());
-        console.log('Key released:', e.key, 'Active keys:', Array.from(pressedKeys));
       }
     };
     
@@ -989,7 +974,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       
       // Don't process if we're already moving to a target
       if (isMoving && targetPosition) {
-        console.log('Already moving to target, ignoring keyboard input');
         return;
       }
       
@@ -1001,33 +985,26 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       if (pressedKeys.has('w') || pressedKeys.has('arrowup')) {
         newPosition.y -= moveSpeed;
         moved = true;
-        console.log('Moving UP to:', newPosition);
       }
       if (pressedKeys.has('s') || pressedKeys.has('arrowdown')) {
         newPosition.y += moveSpeed;
         moved = true;
-        console.log('Moving DOWN to:', newPosition);
       }
       if (pressedKeys.has('a') || pressedKeys.has('arrowleft')) {
         newPosition.x -= moveSpeed;
         moved = true;
-        console.log('Moving LEFT to:', newPosition);
       }
       if (pressedKeys.has('d') || pressedKeys.has('arrowright')) {
         newPosition.x += moveSpeed;
         moved = true;
-        console.log('Moving RIGHT to:', newPosition);
       }
       
       if (moved) {
-        console.log('Position changed. Checking for collisions...');
         const wallCollision = checkWallCollision(newPosition);
         const objectCollision = checkObjectCollision(newPosition);
-        console.log('Collision check results - Wall:', wallCollision, 'Object:', objectCollision);
         
         // Check for collisions
         if (!wallCollision && !objectCollision) {
-          console.log('No collision detected. Calling onMove with:', newPosition);
           onMove(newPosition);
           
           // Play movement sound occasionally
@@ -1041,7 +1018,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
             setTimeout(processMovement, moveInterval);
           }
         } else {
-          console.log('Collision detected! Movement blocked.');
           if (soundEnabled && collisionAudioRef.current) {
             // Play collision sound
             collisionAudioRef.current.currentTime = 0;
@@ -1060,11 +1036,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       canvasRef.current.focus();
     }
     
-    // Log to confirm event listeners are attached
-    console.log('Keyboard event listeners attached to document');
-    
     return () => {
-      console.log('Removing keyboard event listeners');
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
       pressedKeys.clear();
@@ -1073,9 +1045,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
   
   // Handle mouse/touch interactions
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    console.log('Canvas clicked at client coordinates:', e.clientX, e.clientY);
     if (!canvasRef.current) {
-      console.log('Canvas ref is not available');
       return;
     }
     
@@ -1084,12 +1054,10 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     if (!canvas || !rect) return;
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    console.log('Canvas coordinates:', x, y);
     
     // Convert screen coordinates to world coordinates
     const worldX = playerPosition.x + (x - canvas.width / 2);
     const worldY = playerPosition.y + (y - canvas.height / 2);
-    console.log('World coordinates for click:', worldX, worldY);
     
     // Check if clicked on a map object with a flag
     let flagCaptured = false;
@@ -1168,15 +1136,12 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     // If no flag was captured, set target position for movement
     if (!flagCaptured) {
       const newTarget = { x: worldX, y: worldY };
-      console.log('Setting new target position:', newTarget);
       
       // Check if the target position is valid (no collision)
       const wallCollision = checkWallCollision(newTarget);
       const objectCollision = checkObjectCollision(newTarget);
-      console.log('Target collision check - Wall:', wallCollision, 'Object:', objectCollision);
       
       if (!wallCollision && !objectCollision) {
-        console.log('Target is valid, starting movement');
         // Cancel any existing movement
         if (animationFrameIdRef.current) {
           cancelAnimationFrame(animationFrameIdRef.current);
@@ -1191,12 +1156,10 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         if (distance < 5) {
-          console.log('Target is very close, moving directly');
           onMove(newTarget);
           setIsMoving(false);
         }
       } else {
-        console.log('Target is invalid (collision), not moving');
         if (soundEnabled && collisionAudioRef.current) {
           // Play collision sound if target is invalid
           collisionAudioRef.current.currentTime = 0;

@@ -60,19 +60,16 @@ const Game: React.FC = () => {
     const sessionId = localStorage.getItem('sessionId');
 
     if (!playerName || !avatar || !sessionId) {
-      console.log('No player or session information found, redirecting to home');
       navigate('/');
       return;
     }
 
     if (!session && sessionId) {
-      console.log('Loading session data for ID:', sessionId);
       setIsLoading(true);
       setLoadError(null);
 
       getSession(sessionId)
         .then(loadedSession => {
-          console.log('Successfully loaded session:', loadedSession);
           setIsLoading(false);
         })
         .catch(error => {
@@ -89,14 +86,12 @@ const Game: React.FC = () => {
   // Handle player creation
   useEffect(() => {
     if (session && !currentPlayer && !playerCreationAttempted) {
-      console.log('Session loaded but no current player found');
       setPlayerCreationAttempted(true);
 
       const playerName = localStorage.getItem('player');
       const avatar = localStorage.getItem('avatar');
 
       if (playerName && avatar) {
-        console.log('Creating player from localStorage data');
         const tempPlayer = {
           id: `player-${Date.now()}`,
           nickname: playerName,
@@ -160,14 +155,10 @@ const Game: React.FC = () => {
   // Enhance game over handling
   useEffect(() => {
     if (isGameOver) {
-      console.log('Game over detected - handling end of game');
-      
-      // Stop any active timers, sounds, or game mechanics
       stopBackgroundMusic(); // Use the hook method instead of direct access
       
       // You might want to save the final score or game stats here
       const finalScore = capturedFlagsCount;
-      console.log(`Game ended with score: ${finalScore}`);
       
       // Notify the backend about game completion if needed
       if (session) {
@@ -197,7 +188,6 @@ const Game: React.FC = () => {
     setCapturedFlagsCount(newCapturedCount);
 
     if (newCapturedCount >= flags.length) {
-      console.log('All flags captured! Game over.');
       setIsGameOver(true);
     }
   }, [currentPlayer, session, flags.length, captureFlag, playFlagCaptureSound, capturedFlagsCount]);

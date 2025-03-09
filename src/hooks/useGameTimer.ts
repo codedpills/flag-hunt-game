@@ -40,8 +40,6 @@ export const useGameTimer = ({
 
   // Create timer implementation separate from React's render cycle
   const setupTimer = () => {
-    console.log("⏰ Setting up global timer mechanism");
-    
     // Clean up any existing timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -57,14 +55,8 @@ export const useGameTimer = ({
       // Manually update the state to reflect the change in the UI
       setTimeLeft(timeLeftRef.current);
       
-      // Log at appropriate intervals
-      if (timeLeftRef.current % 10 === 0 || timeLeftRef.current < 10) {
-        console.log(`⏰ Timer: ${Math.floor(timeLeftRef.current / 60)}:${(timeLeftRef.current % 60).toString().padStart(2, '0')}`);
-      }
-      
       // Handle time up
       if (timeLeftRef.current <= 0) {
-        console.log('⏰ Time up!');
         clearInterval(timerRef.current!);
         timerRef.current = null;
         
