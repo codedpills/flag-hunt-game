@@ -30,7 +30,14 @@ const Game: React.FC = () => {
   const [isMazeRendered, setIsMazeRendered] = useState(false);
 
   // Custom hooks
-  const { soundEnabled, toggleSound, playSound, initBackgroundMusic, stopBackgroundMusic } = useGameSound();
+  const { 
+    soundEnabled, 
+    toggleSound, 
+    playSound, 
+    playFlagCaptureSound, // Add this function to destructuring
+    initBackgroundMusic, 
+    stopBackgroundMusic 
+  } = useGameSound();
   
   // FIX: Don't multiply by 60 here since the duration is already in seconds
   const { timeLeft, formattedTime } = useGameTimer({
@@ -180,8 +187,12 @@ const Game: React.FC = () => {
     if (!currentPlayer || !session) return;
 
     captureFlag(flagId);
-    playSound('/sounds/flag-capture.mp3');
+    
+    // Use the difficulty-specific sound
+    const difficulty = session?.settings?.difficulty || 'medium';
+    playFlagCaptureSound(difficulty as 'easy' | 'medium' | 'hard');
 
+    // Update captured flags count
     const newCapturedCount = capturedFlagsCount + 1;
     setCapturedFlagsCount(newCapturedCount);
 
@@ -189,7 +200,7 @@ const Game: React.FC = () => {
       console.log('All flags captured! Game over.');
       setIsGameOver(true);
     }
-  }, [currentPlayer, session, flags.length, captureFlag, playSound, capturedFlagsCount]);
+  }, [currentPlayer, session, flags.length, captureFlag, playFlagCaptureSound, capturedFlagsCount]);
 
   const handlePlayerMove = useCallback((position: Position) => {
     if (!currentPlayer || !session) return;
@@ -241,6 +252,9 @@ const Game: React.FC = () => {
         onFlagCapture={handleFlagCapture}
         onMove={handlePlayerMove}
         onMazeRendered={() => setIsMazeRendered(true)}
+        difficulty={session?.settings?.difficulty || 'medium'}
+        soundEnabled={soundEnabled} // Pass soundEnabled down the component tree
+        gameMode={session?.settings?.gameMode || 'normal'} // Add gameMode from session settings
       />
       
       <GameLeaderboard
@@ -249,7 +263,6 @@ const Game: React.FC = () => {
         players={session?.players || []}
       />
       
-      {/* Add Game Over Modal */}
       <GameOverModal 
         isOpen={isGameOver}
         onClose={handleCloseGameOver}

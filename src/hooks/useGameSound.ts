@@ -53,6 +53,35 @@ export const useGameSound = ({
     }
   };
 
+  // Enhanced play sound with multiple variations
+  const playFlagCaptureSound = (difficulty: 'easy' | 'medium' | 'hard') => {
+    if (!soundEnabled) return;
+    
+    let soundPath = '/sounds/flag-capture.mp3'; // Default sound
+    let volume = 0.7;
+    
+    // Difficulty-specific sounds
+    switch(difficulty) {
+      case 'easy':
+        soundPath = '/sounds/flag-capture-easy.mp3'; // Create these sound files
+        volume = 0.8;
+        break;
+      case 'medium':
+        soundPath = '/sounds/flag-capture-medium.mp3';
+        volume = 0.7;
+        break;
+      case 'hard':
+        soundPath = '/sounds/flag-capture-hard.mp3';
+        volume = 0.6;
+        break;
+    }
+    
+    // Play the sound
+    const sound = new Audio(soundPath);
+    sound.volume = volume;
+    sound.play().catch(e => console.log('Audio playback prevented:', e));
+  };
+
   // Handle background music toggle
   useEffect(() => {
     if (backgroundMusic) {
@@ -68,6 +97,7 @@ export const useGameSound = ({
     soundEnabled,
     toggleSound,
     playSound,
+    playFlagCaptureSound, // Add the new function
     initBackgroundMusic,
     stopBackgroundMusic // Export the new function
   };

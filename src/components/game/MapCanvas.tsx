@@ -1,15 +1,18 @@
-import React, { useRef, useEffect, useState, useCallback, MouseEvent } from 'react';
+import React, { useEffect, useRef, useState, useCallback, MouseEvent } from 'react';
 import { Position, Flag } from '../../types/game';
 
 interface MapCanvasProps {
+  session: any;
+  currentPlayer: any;
   playerPosition: Position;
-  flags: Flag[];
-  onMove: (position: Position) => void;
+  flags: any[];
   onFlagCapture: (flagId: string) => void;
-  gameMode: 'normal' | 'red-flag' | 'last-ones-out';
-  soundEnabled: boolean;
-  playerAvatar?: string; // Add avatar prop
-  onRendered?: () => void; // Add onRendered callback
+  onMove: (position: Position) => void;
+  onMazeRendered?: () => void;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  soundEnabled: boolean; // Add this prop
+  playerAvatar?: string; // Also add this prop for player rendering
+  gameMode?: 'normal' | 'red-flag' | 'last-ones-out'; // Add this prop
 }
 
 // Map object types
@@ -27,14 +30,17 @@ interface MapObject {
 }
 
 const MapCanvas: React.FC<MapCanvasProps> = ({
+  session,
+  currentPlayer,
   playerPosition,
   flags,
-  onMove,
   onFlagCapture,
-  gameMode,
-  soundEnabled,
-  playerAvatar = 'orange', // Default to orange if not provided
-  onRendered, // Add onRendered callback
+  onMove,
+  onMazeRendered,
+  difficulty = 'medium',
+  soundEnabled, // Destructure from props
+  playerAvatar = 'orange', // Default avatar
+  gameMode = 'normal' // Default to normal if not provided
 }) => {
   if (!playerPosition) {
     console.error('Player position is undefined.');
@@ -52,6 +58,23 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
   const [processedFlags] = useState<Set<string>>(new Set());
   const [targetPosition, setTargetPosition] = useState<Position | null>(null);
   const [isMoving, setIsMoving] = useState(false);
+  const [objectsWithFlags, setObjectsWithFlags] = useState<Map<string, string>>(new Map());
+  const [clicksNeeded, setClicksNeeded] = useState<Map<string, number>>(new Map());
+  const [nearbyFlags, setNearbyFlags] = useState<string[]>([]);
+  
+  // Required clicks based on difficulty
+  const requiredClicks = {
+    'easy': 1,
+    'medium': 2,
+    'hard': 3
+  };
+  
+  // Glow effects configuration
+  const glowEffects = {
+    'easy': { color: 'rgba(0, 255, 0, 0.5)', radius: 15 },    // Green, easy to see
+    'medium': { color: 'rgba(255, 215, 0, 0.4)', radius: 10 }, // Gold, moderate visibility
+    'hard': { color: 'rgba(255, 255, 255, 0.3)', radius: 8 }  // White, harder to notice
+  };
   
   // Audio elements
   const moveAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -70,9 +93,18 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     collisionAudioRef.current.volume = 0.3;
     
     return () => {
-      if (moveAudioRef.current) moveAudioRef.current = null;
-      if (captureAudioRef.current) captureAudioRef.current = null;
-      if (collisionAudioRef.current) collisionAudioRef.current = null;
+      if (moveAudioRef.current) {
+        moveAudioRef.current.pause();
+        moveAudioRef.current = null;
+      }
+      if (captureAudioRef.current) {
+        captureAudioRef.current.pause();
+        captureAudioRef.current = null;
+      }
+      if (collisionAudioRef.current) {
+        collisionAudioRef.current.pause(); 
+        collisionAudioRef.current = null;
+      }
     };
   }, []);
   
@@ -431,6 +463,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       if (animationFrameIdRef.current) {
         console.log('Cleaning up animation frame');
         cancelAnimationFrame(animationFrameIdRef.current);
+        animationFrameIdRef.current = 0; // Reset to known value
       }
     };
   }, [isMoving, targetPosition, playerPosition, onMove, checkWallCollision, checkObjectCollision, soundEnabled]);
@@ -639,7 +672,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
         // Draw flag indicator if object has a flag and it's not captured
         if (obj.hasFlag && !obj.flagCaptured) {
           // Find the flag
-          const flag = flags.find(f => f.id === obj.flagId);
+          const flag = flags?.find(f => f.id === obj.flagId);
           
           if (flag && flag.status === 'available') {
             // Draw a subtle indicator
@@ -1047,8 +1080,8 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     }
     
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    console.log('Canvas rect:', rect);
+    const rect = canvas?.getBoundingClientRect();
+    if (!canvas || !rect) return;
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     console.log('Canvas coordinates:', x, y);
@@ -1175,10 +1208,10 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
   
   // Add tabIndex to make canvas focusable for keyboard events
   useEffect(() => {
-    if (onRendered) {
-      onRendered();
+    if (onMazeRendered) {  // Change onRendered to onMazeRendered
+      onMazeRendered();
     }
-  }, [onRendered]);
+  }, [onMazeRendered]);  // Change dependency as well
 
   return (
     <div className="w-full h-full relative">
