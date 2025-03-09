@@ -10,6 +10,7 @@ import { LoadingScreen, PlayerErrorScreen, PlayerLoadingScreen } from '../compon
 import GameHeader from '../components/game/GameHeader';
 import GameContent from '../components/game/GameContent';
 import GameLeaderboard from '../components/game/GameLeaderboard';
+import GameOverModal from '../components/game/GameOverModal'; // Add this import
 
 const Game: React.FC = () => {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ const Game: React.FC = () => {
   const [isMazeRendered, setIsMazeRendered] = useState(false);
 
   // Custom hooks
-  const { soundEnabled, toggleSound, playSound, initBackgroundMusic } = useGameSound();
+  const { soundEnabled, toggleSound, playSound, initBackgroundMusic, stopBackgroundMusic } = useGameSound();
   
   // FIX: Don't multiply by 60 here since the duration is already in seconds
   const { timeLeft, formattedTime } = useGameTimer({
@@ -149,6 +150,31 @@ const Game: React.FC = () => {
     return () => webSocketService.disconnect();
   }, [session, currentPlayer, setError]);
 
+  // Enhance game over handling
+  useEffect(() => {
+    if (isGameOver) {
+      console.log('Game over detected - handling end of game');
+      
+      // Stop any active timers, sounds, or game mechanics
+      stopBackgroundMusic(); // Use the hook method instead of direct access
+      
+      // You might want to save the final score or game stats here
+      const finalScore = capturedFlagsCount;
+      console.log(`Game ended with score: ${finalScore}`);
+      
+      // Notify the backend about game completion if needed
+      if (session) {
+        try {
+          // This is a placeholder - implement your actual API call
+          console.log('Sending game completion data to server');
+          // await api.completeGame(session.id, { score: finalScore });
+        } catch (error) {
+          console.error('Failed to save game results:', error);
+        }
+      }
+    }
+  }, [isGameOver, capturedFlagsCount, session, stopBackgroundMusic]);
+
   // Event handlers
   const handleFlagCapture = useCallback((flagId: string) => {
     if (!currentPlayer || !session) return;
@@ -176,6 +202,11 @@ const Game: React.FC = () => {
       navigate('/');
     }
   }, [leaveSession, navigate]);
+
+  const handleCloseGameOver = useCallback(() => {
+    // Navigate back to lobby or home
+    navigate('/');
+  }, [navigate]);
 
   // Conditional rendering
   if (isLoading || !session) {
@@ -216,6 +247,15 @@ const Game: React.FC = () => {
         isOpen={showLeaderboard}
         onClose={() => setShowLeaderboard(false)}
         players={session?.players || []}
+      />
+      
+      {/* Add Game Over Modal */}
+      <GameOverModal 
+        isOpen={isGameOver}
+        onClose={handleCloseGameOver}
+        reason={timeLeft <= 0 ? "Time's up!" : "All flags captured!"}
+        flagsCaptured={capturedFlagsCount}
+        totalFlags={flags.length}
       />
     </div>
   );
