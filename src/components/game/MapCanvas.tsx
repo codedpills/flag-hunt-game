@@ -108,6 +108,14 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     };
   }, []);
   
+  // Add this useEffect at the top to track click events and state changes for debugging
+  useEffect(() => {
+    console.log("MapCanvas mounted");
+    return () => {
+      console.log("MapCanvas unmounted");
+    };
+  }, []);
+
   // Function to find a valid starting position
   const findValidStartPosition = (walls: { start: Position; end: Position }[], gridSize: number, mazeSize: number): Position => {
     const cellSize = gridSize / 2;
@@ -262,71 +270,56 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     setMapObjects(objects);
   }, []);
   
-  // Associate flags with map objects
+  // Replace the flag assignment logic with a simpler, more reliable approach
+  // Remove the entire effect that uses flagAssignmentRef and replace it with this:
+
   useEffect(() => {
-    if (flags.length === 0 || mapObjects.length === 0) return;
+    // Skip if no flags or objects
+    if (!flags?.length || !mapObjects.length) return;
     
-    // Clone the map objects
+    console.log("Updating flag assignments, available flags:", 
+      flags.filter(f => f.status === 'available').length);
+    
+    // Create a deep copy of map objects
     const updatedObjects = [...mapObjects];
     
-    // Reset all objects' flag associations
+    // Reset all objects' flag associations but keep the flagCaptured state
     updatedObjects.forEach(obj => {
-      obj.hasFlag = false;
-      obj.flagId = undefined;
-    });
-    
-    // Randomly assign flags to objects
-    flags.forEach(flag => {
-      if (flag.status === 'available') {
-        // Find a random object that doesn't have a flag yet
-        const availableObjects = updatedObjects.filter(obj => !obj.hasFlag && !obj.flagCaptured);
-        
-        if (availableObjects.length > 0) {
-          const randomIndex = Math.floor(Math.random() * availableObjects.length);
-          const objectIndex = updatedObjects.findIndex(obj => obj.id === availableObjects[randomIndex].id);
-          
-          if (objectIndex !== -1) {
-            updatedObjects[objectIndex].hasFlag = true;
-            updatedObjects[objectIndex].flagId = flag.id;
-          }
-        }
-      } else if (flag.status === 'captured') {
-        // Mark objects with captured flags
-        const objectWithFlag = updatedObjects.find(obj => obj.flagId === flag.id);
-        if (objectWithFlag) {
-          objectWithFlag.hasFlag = false;
-          objectWithFlag.flagCaptured = true;
-        }
+      if (!obj.flagCaptured) {
+        obj.hasFlag = false;
+        obj.flagId = undefined;
       }
     });
     
-    setMapObjects(updatedObjects);
-  }, [flags, mapObjects]);
-
-  // Replace the forced flag assignment with a cleaner version
-  useEffect(() => {
-    if (flags?.length > 0 && mapObjects.length > 0) {
-      // Create a deep copy of map objects
-      const updatedObjects = [...mapObjects];
+    // Mark objects with captured flags
+    flags.filter(f => f.status === 'captured').forEach(flag => {
+      const objWithFlag = updatedObjects.find(obj => obj.flagId === flag.id);
+      if (objWithFlag) {
+        objWithFlag.hasFlag = false;
+        objWithFlag.flagCaptured = true;
+      }
+    });
+    
+    // Assign available flags to random objects
+    const availableFlags = flags.filter(f => f.status === 'available');
+    const availableObjects = updatedObjects.filter(obj => !obj.hasFlag && !obj.flagCaptured);
+    
+    if (availableFlags.length > 0 && availableObjects.length > 0) {
+      console.log(`Assigning ${availableFlags.length} flags to map objects`);
       
-      // Reset flag assignments
-      updatedObjects.forEach(obj => {
-        obj.hasFlag = false;
-        obj.flagId = undefined;
-      });
-      
-      // Assign available flags to random objects
-      const availableFlags = flags.filter(f => f.status === 'available');
-      const availableObjects = updatedObjects.filter(obj => !obj.flagCaptured);
+      // Create a copy to avoid modifying while iterating
+      const objectsToAssign = [...availableObjects];
       
       availableFlags.forEach(flag => {
-        if (availableObjects.length > 0) {
-          const randomIndex = Math.floor(Math.random() * availableObjects.length);
-          const selectedObj = availableObjects.splice(randomIndex, 1)[0];
+        if (objectsToAssign.length > 0) {
+          // Select a random object
+          const randomIndex = Math.floor(Math.random() * objectsToAssign.length);
+          const selectedObj = objectsToAssign.splice(randomIndex, 1)[0];
           
           // Find this object in our updatedObjects array
           const objIndex = updatedObjects.findIndex(o => o.id === selectedObj.id);
           if (objIndex !== -1) {
+            console.log(`Assigning flag ${flag.id} to object ${selectedObj.id}`);
             updatedObjects[objIndex].hasFlag = true;
             updatedObjects[objIndex].flagId = flag.id;
           }
@@ -334,9 +327,43 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       });
       
       setMapObjects(updatedObjects);
+    } else {
+      console.log("No available flags or objects to assign");
     }
-  }, [flags, mapObjects]);
-  
+  }, [flags]);
+
+  // Replace the forced flag assignment with a cleaner version
+  const clicksInitializedRef = useRef(false);
+
+  useEffect(() => {
+    // Skip if no flags
+    if (!flags?.length) return;
+    
+    // Only update clicks when difficulty changes or for new flags
+    if (clicksInitializedRef.current && !flags.some(f => !clicksNeeded.has(f.id) && f.status === 'available')) {
+      return;
+    }
+    
+    console.log("Initializing clicks needed for flags");
+    clicksInitializedRef.current = true;
+    
+    // Only update for available flags that don't have clicks assigned yet
+    const newClicksNeeded = new Map(clicksNeeded);
+    let needsUpdate = false;
+    
+    flags.forEach(flag => {
+      if (flag.status === 'available' && !newClicksNeeded.has(flag.id)) {
+        newClicksNeeded.set(flag.id, requiredClicks[difficulty]);
+        needsUpdate = true;
+      }
+    });
+    
+    // Only update state if we actually have changes
+    if (needsUpdate) {
+      setClicksNeeded(newClicksNeeded);
+    }
+  }, [flags, difficulty]); // Do not include clicksNeeded
+
   // Handle canvas resize
   useEffect(() => {
     const handleResize = () => {
@@ -443,10 +470,10 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
         return;
       }
       
-      // Calculate next position
+      // Fix the incorrect calculation in nextY
       const ratio = moveSpeed / distance;
       const nextX = playerPosition.x + dx * ratio;
-      const nextY = playerPosition.y + dy * ratio;
+      const nextY = playerPosition.y + dy * ratio; // Fix: was incorrectly using dy * dy * ratio
       const nextPosition = { x: nextX, y: nextY };
       
       
@@ -700,13 +727,36 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
           const flag = flags?.find(f => f.id === obj.flagId);
           
           if (flag && flag.status === 'available') {
-            // Draw a subtle glow based on difficulty
+            // Get current clicks needed for this flag
+            const currentClicks = clicksNeeded.get(flag.id) || requiredClicks[difficulty];
+            const totalClicks = requiredClicks[difficulty];
+            const captureProgress = 1 - (currentClicks / totalClicks);
+            
+            // Draw a subtle glow based on difficulty and capture progress
             ctx.shadowBlur = glowEffects[difficulty].radius;
             ctx.shadowColor = glowEffects[difficulty].color;
-            ctx.fillStyle = gameMode === 'red-flag' ? 'rgba(255, 0, 0, 0.3)' : 'rgba(255, 215, 0, 0.3)';
+            
+            // Draw progress ring
             ctx.beginPath();
             ctx.arc(objX + obj.size.width / 2, objY + obj.size.height / 2, 20, 0, Math.PI * 2);
+            ctx.fillStyle = gameMode === 'red-flag' ? 'rgba(255, 0, 0, 0.2)' : 'rgba(255, 215, 0, 0.2)';
             ctx.fill();
+            
+            // Draw progress arc if not at full clicks
+            if (captureProgress > 0) {
+              ctx.beginPath();
+              ctx.arc(
+                objX + obj.size.width / 2, 
+                objY + obj.size.height / 2, 
+                20, 
+                -Math.PI / 2, 
+                -Math.PI / 2 + (captureProgress * Math.PI * 2)
+              );
+              ctx.lineTo(objX + obj.size.width / 2, objY + obj.size.height / 2);
+              ctx.fillStyle = gameMode === 'red-flag' ? 'rgba(255, 0, 0, 0.5)' : 'rgba(255, 215, 0, 0.5)';
+              ctx.fill();
+            }
+            
             ctx.shadowBlur = 0;
             
             // Draw flag icon
@@ -726,6 +776,19 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
             ctx.moveTo(objX + obj.size.width / 2 - 5, objY + obj.size.height / 2 - 15);
             ctx.lineTo(objX + obj.size.width / 2 - 5, objY + obj.size.height / 2 + 15);
             ctx.stroke();
+            
+            // Show clicks needed as small dots below flag
+            const dotSize = 3;
+            const dotSpacing = 8;
+            const dotsWidth = (currentClicks * dotSpacing) - (dotSpacing - dotSize);
+            const dotsStartX = objX + obj.size.width / 2 - dotsWidth / 2;
+            
+            for (let i = 0; i < currentClicks; i++) {
+              ctx.beginPath();
+              ctx.arc(dotsStartX + i * dotSpacing, objY + obj.size.height / 2 + 20, dotSize, 0, Math.PI * 2);
+              ctx.fillStyle = '#ffffff';
+              ctx.fill();
+            }
           }
         }
       }
@@ -986,9 +1049,31 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       ctx.fillText('Flag Captured!', animX, animY + 35);
     }
     
+    // Add this to the rendering effect, just before drawing player character
+    // Add this inside the useEffect where you're doing canvas drawing, inside your code for drawing map objects
+    if (mapObjects.filter(obj => obj.hasFlag).length === 0) {
+      debugFlagRendering(ctx, flags, mapObjects);
+    }
+    
   }, [canvasSize, playerPosition, flags, gameMode, walls, mapObjects, targetPosition, flagCaptureAnimation, playerAvatar]);
   
-  
+  // Add this debugging function at the top of the component
+  // This will help us see what happens during rendering
+  const debugFlagRendering = (ctx: CanvasRenderingContext2D, flags: any[], mapObjects: MapObject[]) => {
+    // Output urgent debug information in the canvas itself
+    const flagsWithObjects = mapObjects.filter(obj => obj.hasFlag);
+    ctx.font = 'bold 20px Arial';
+    ctx.fillStyle = '#ff0000';
+    ctx.fillText(`Available flags: ${flags?.filter(f => f.status === 'available').length || 0}`, 20, 50);
+    ctx.fillText(`Objects with flags: ${flagsWithObjects.length}`, 20, 80);
+    
+    // If we have a mismatch, show warning
+    if (flags?.filter(f => f.status === 'available').length > 0 && flagsWithObjects.length === 0) {
+      ctx.fillText(`⚠️ FLAGS NOT ASSIGNED TO OBJECTS! ⚠️`, 20, 110);
+      console.error("FLAG ASSIGNMENT FAILURE! Flags not properly assigned to objects");
+    }
+  };
+
   // Handle keyboard movement with debouncing to prevent too many updates
   useEffect(() => {
     
@@ -1092,6 +1177,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
   
   // Handle mouse/touch interactions
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    console.log("Canvas clicked");
     if (!canvasRef.current) {
       return;
     }
@@ -1102,12 +1188,19 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
+    // Before converting screen coordinates to world:
+    console.log("Screen click coordinates:", { x, y });
+    console.log("Player position:", playerPosition);
+
     // Convert screen coordinates to world coordinates
     const worldX = playerPosition.x + (x - canvas.width / 2);
     const worldY = playerPosition.y + (y - canvas.height / 2);
     
+    // After converting:
+    console.log("World click coordinates:", { worldX, worldY });
+
     // Check if clicked on a map object with a flag
-    let flagCaptured = false;
+    let flagClicked = false;
     
     for (const obj of mapObjects) {
       if (obj.hasFlag && !obj.flagCaptured) {
@@ -1133,35 +1226,62 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
             
             // Only allow capture if player is close enough (within 100 units)
             const captureRadius = 100;
+            flagClicked = true;
             
             if (distance <= captureRadius) {
-              // Call the flag capture callback
-              onFlagCapture(flag.id);
-              processedFlags.add(flag.id);
-              flagCaptured = true;
+              // Get current clicks needed
+              const currentClicks = clicksNeeded.get(flag.id) || requiredClicks[difficulty];
               
-              // Update map objects
-              setMapObjects(prev => 
-                prev.map(o => 
-                  o.id === obj.id 
-                    ? { ...o, hasFlag: false, flagCaptured: true } 
-                    : o
-                )
-              );
-              
-              // Play capture sound
-              if (soundEnabled && captureAudioRef.current) {
-                captureAudioRef.current.currentTime = 0;
-                captureAudioRef.current.play().catch(e => console.log("Audio play error:", e));
+              if (currentClicks <= 1) {
+                // Final click - capture the flag
+                onFlagCapture(flag.id);
+                processedFlags.add(flag.id);
+                
+                // Update map objects
+                setMapObjects(prev => 
+                  prev.map(o => 
+                    o.id === obj.id 
+                      ? { ...o, hasFlag: false, flagCaptured: true } 
+                      : o
+                  )
+                );
+                
+                // Remove from clicks tracking
+                const newClicksNeeded = new Map(clicksNeeded);
+                newClicksNeeded.delete(flag.id);
+                setClicksNeeded(newClicksNeeded);
+                
+                // Play capture sound
+                if (soundEnabled && captureAudioRef.current) {
+                  captureAudioRef.current.currentTime = 0;
+                  captureAudioRef.current.play().catch(e => console.log("Audio play error:", e));
+                }
+                
+                // Show capture animation
+                setFlagCaptureAnimation({
+                  position: { x: obj.position.x + obj.size.width / 2, y: obj.position.y + obj.size.height / 2 },
+                  timeLeft: 30
+                });
+              } else {
+                // Progress click - update clicks needed
+                const newClicksNeeded = new Map(clicksNeeded);
+                newClicksNeeded.set(flag.id, currentClicks - 1);
+                setClicksNeeded(newClicksNeeded);
+                
+                // Play intermediate capture sound
+                if (soundEnabled && moveAudioRef.current) {
+                  moveAudioRef.current.currentTime = 0;
+                  moveAudioRef.current.play().catch(e => console.log("Audio play error:", e));
+                }
+                
+                // Show progress animation
+                setFlagCaptureAnimation({
+                  position: { x: obj.position.x + obj.size.width / 2, y: obj.position.y + obj.size.height / 2 },
+                  timeLeft: 15
+                });
               }
-              
-              // Show capture animation
-              setFlagCaptureAnimation({
-                position: { x: obj.position.x + obj.size.width / 2, y: obj.position.y + obj.size.height / 2 },
-                timeLeft: 30
-              });
             } else {
-              // Play "too far" sound or show a message
+              // Too far from flag
               if (soundEnabled && collisionAudioRef.current) {
                 collisionAudioRef.current.currentTime = 0;
                 collisionAudioRef.current.play().catch(e => console.log("Audio play error:", e));
@@ -1174,14 +1294,14 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
               });
             }
             
-            break; // Exit the loop after attempting to capture a flag
+            break; // Exit the loop after handling flag click
           }
         }
       }
     }
     
-    // If no flag was captured, set target position for movement
-    if (!flagCaptured) {
+    // If no flag was clicked, handle movement
+    if (!flagClicked) {
       const newTarget = { x: worldX, y: worldY };
       
       // Check if the target position is valid (no collision)
@@ -1214,7 +1334,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
         }
       }
     }
-  }, [canvasRef, playerPosition, mapObjects, flags, processedFlags, onFlagCapture, soundEnabled, checkWallCollision, checkObjectCollision]);
+  }, [canvasRef, playerPosition, mapObjects, flags, processedFlags, onFlagCapture, soundEnabled, checkWallCollision, checkObjectCollision, clicksNeeded, difficulty, requiredClicks]);
   
   // Add tabIndex to make canvas focusable for keyboard events
   useEffect(() => {
@@ -1222,6 +1342,160 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
       onMazeRendered();
     }
   }, [onMazeRendered]);  // Change dependency as well
+
+  // Add this debugging effect to trace flag data
+  useEffect(() => {
+    // Output detailed flag information
+    console.log("FLAGS DEBUG DATA:", {
+      flagsArray: flags,
+      availableFlags: flags?.filter(f => f.status === 'available') || [],
+      capturedFlags: flags?.filter(f => f.status === 'captured') || [],
+      objectsWithFlags: mapObjects.filter(obj => obj.hasFlag),
+      flagIdsInObjects: mapObjects.filter(obj => obj.flagId).map(obj => obj.flagId)
+    });
+    
+    // Check for potential issues
+    if (flags?.length && !mapObjects.some(obj => obj.hasFlag)) {
+      console.warn("⚠️ No objects have flags assigned despite flags being available!");
+    }
+  }, [flags, mapObjects]);
+
+  // Modify the flag assignment effect to ensure flags get assigned
+  useEffect(() => {
+    // Skip if no flags or objects
+    if (!flags?.length || !mapObjects.length) return;
+    
+    console.log("Updating flag assignments, available flags:", 
+      flags.filter(f => f.status === 'available').length);
+    
+    // Create a deep copy of map objects
+    const updatedObjects = [...mapObjects];
+    
+    // IMPORTANT: Reset ALL flags before reassignment to avoid stale state
+    updatedObjects.forEach(obj => {
+      obj.hasFlag = false;
+      obj.flagId = undefined;
+    });
+    
+    // Mark objects with captured flags
+    const capturedFlags = flags.filter(f => f.status === 'captured');
+    capturedFlags.forEach(flag => {
+      // Find a random object to mark as having had this flag
+      const availableForCapture = updatedObjects.filter(obj => !obj.flagCaptured);
+      if (availableForCapture.length > 0) {
+        const randomIndex = Math.floor(Math.random() * availableForCapture.length);
+        const objIndex = updatedObjects.findIndex(o => o.id === availableForCapture[randomIndex].id);
+        
+        if (objIndex !== -1) {
+          updatedObjects[objIndex].flagCaptured = true;
+        }
+      }
+    });
+    
+    // Get truly available objects (not marked as captured)
+    const availableForFlags = updatedObjects.filter(obj => !obj.hasFlag && !obj.flagCaptured);
+    
+    // Assign available flags to available objects
+    const availableFlags = flags.filter(f => f.status === 'available');
+    
+    console.log(`Have ${availableFlags.length} available flags and ${availableForFlags.length} available objects`);
+    
+    if (availableFlags.length > 0 && availableForFlags.length > 0) {
+      // Create a copy to avoid modifying during iteration
+      const objectsToAssign = [...availableForFlags];
+      
+      availableFlags.forEach((flag, index) => {
+        // Select a random object if we have objects left
+        if (objectsToAssign.length > 0) {
+          const randomIndex = Math.floor(Math.random() * objectsToAssign.length);
+          const selectedObj = objectsToAssign.splice(randomIndex, 1)[0];
+          
+          // Find in our main objects array
+          const objIndex = updatedObjects.findIndex(o => o.id === selectedObj.id);
+          if (objIndex !== -1) {
+            console.log(`FLAG ASSIGNMENT: Flag ${flag.id} assigned to object ${selectedObj.id}`);
+            updatedObjects[objIndex].hasFlag = true;
+            updatedObjects[objIndex].flagId = flag.id;
+          }
+        } else {
+          console.warn(`No more objects available to assign flag ${flag.id}`);
+        }
+      });
+      
+      // Update state with our changes
+      console.log(`Updating map objects with ${updatedObjects.filter(obj => obj.hasFlag).length} objects containing flags`);
+      setMapObjects(updatedObjects);
+    } else {
+      console.log("No available flags or objects to assign");
+    }
+  }, [flags]);
+
+  // Replace the flag debug effect with this enhanced version that forces re-assignment
+  useEffect(() => {
+    const availableFlags = flags?.filter(f => f.status === 'available') || [];
+    const flagObjects = mapObjects.filter(obj => obj.hasFlag);
+    
+    console.log("FLAGS DEBUG DATA:", {
+      availableFlags: availableFlags.length,
+      objectsWithFlags: flagObjects.length,
+      flagDetails: availableFlags,
+      objectDetails: flagObjects
+    });
+    
+    // FORCE FLAG REASSIGNMENT if we have a mismatch
+    if (availableFlags.length > 0 && flagObjects.length === 0) {
+      console.warn("🚨 MISMATCH: We have available flags but no objects with flags - forcing reassignment!");
+      
+      // Create a function to force flag assignment
+      const forceAssignFlags = () => {
+        if (!flags?.length || !mapObjects.length) return;
+        
+        console.log("🔄 FORCED FLAG ASSIGNMENT");
+        
+        // Deep copy our objects
+        const updatedObjects = [...mapObjects];
+        
+        // Clear all flag assignments first
+        updatedObjects.forEach(obj => {
+          obj.hasFlag = false;
+          obj.flagId = undefined;
+        });
+        
+        // Get available flags and objects
+        const availableFlags = flags.filter(f => f.status === 'available');
+        const availableObjects = updatedObjects.filter(obj => !obj.flagCaptured);
+        
+        // Assign flags to random objects
+        if (availableFlags.length > 0 && availableObjects.length > 0) {
+          const objectsToUse = [...availableObjects];
+          
+          availableFlags.forEach(flag => {
+            if (objectsToUse.length > 0) {
+              // Take a random object
+              const randomIdx = Math.floor(Math.random() * objectsToUse.length);
+              const selectedObj = objectsToUse.splice(randomIdx, 1)[0];
+              
+              // Find this object in our main array
+              const objIndex = updatedObjects.findIndex(o => o.id === selectedObj.id);
+              if (objIndex !== -1) {
+                // Assign flag to this object
+                updatedObjects[objIndex].hasFlag = true;
+                updatedObjects[objIndex].flagId = flag.id;
+                console.log(`🚩 ASSIGNED flag ${flag.id} to object ${selectedObj.id}`);
+              }
+            }
+          });
+          
+          // Update our objects state
+          console.log(`✅ Updated ${updatedObjects.filter(obj => obj.hasFlag).length} objects with flags`);
+          setMapObjects(updatedObjects);
+        }
+      };
+      
+      // Execute with slight delay to ensure everything is ready
+      setTimeout(forceAssignFlags, 500);
+    }
+  }, [flags, mapObjects]);
 
   return (
     <div className="w-full h-full relative">

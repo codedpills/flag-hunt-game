@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { useSessionManager } from '../hooks/useSessionManager';
@@ -14,7 +14,15 @@ import GameOverModal from '../components/game/GameOverModal'; // Add this import
 
 const Game: React.FC = () => {
   const navigate = useNavigate();
-  const { session, currentPlayer, updatePlayerPosition, captureFlag, leaveSession, setError } = useGameStore();
+  const { 
+    session, 
+    currentPlayer, 
+    updatePlayerPosition, 
+    captureFlag, 
+    leaveSession, 
+    setError, 
+    updateSession // Add this
+  } = useGameStore();
   const { session: sessionFromManager, startSessionTimer, getSession } = useSessionManager();
   
   // State for UI components
@@ -120,13 +128,93 @@ const Game: React.FC = () => {
     }
   }, [session]);
 
+  // Add debug logging for the flags state
+  // Add this after the flags initialization
+  useEffect(() => {
+    if (session?.flags) {
+      console.log("Game received flags:", session.flags);
+      setFlags(session.flags);
+    }
+  }, [session]);
+
+  // Replace the problematic test flags effect with this fixed version
+  useEffect(() => {
+    // Only run this once when session is first loaded
+    if (session && (!session.flags || session.flags.length === 0)) {
+      console.log("Adding test flags to session for debugging");
+      
+      const testFlags = [
+        { id: 'flag-1', status: 'available' },
+        { id: 'flag-2', status: 'available' },
+        { id: 'flag-3', status: 'available' }
+      ];
+      
+      // Only update local state, not the store directly
+      setFlags(testFlags);
+      
+      // Update the session through the proper updateSession action
+      updateSession({
+        ...session,
+        flags: testFlags
+      });
+    } else if (session?.flags) {
+      console.log(`Session has ${session.flags.length} flags`);
+    }
+  }, [session, updateSession]);
+
+  // Fix the flag structure validation effect - remove direct store access
+  useEffect(() => {
+    // Skip if no flags
+    if (!flags || flags.length === 0) return;
+
+    // Validate flag structure without using refs
+    const invalidFlags = flags.some(flag => 
+      !flag || 
+      typeof flag.id !== 'string' || 
+      typeof flag.status !== 'string'
+    );
+    
+    if (invalidFlags) {
+      console.error("⚠️ FLAG DATA ISSUE! Some flags have invalid structure:", flags);
+      
+      // Create proper flags
+      const fixedFlags = flags.map((flag, index) => {
+        if (!flag || typeof flag.id !== 'string' || typeof flag.status !== 'string') {
+          return { id: `flag-${index}`, status: 'available' };
+        }
+        return flag;
+      });
+      
+      console.log("Fixed flags:", fixedFlags);
+      setFlags(fixedFlags);
+      
+      // Update session with fixed flags via the proper action method
+      if (session) {
+        updateSession({
+          ...session,
+          flags: fixedFlags
+        });
+      }
+    }
+  }, [flags, session, updateSession]);
+
   // Update captured flags count
   useEffect(() => {
-    if (currentPlayer && session) {
-      const capturedCount = currentPlayer.capturedFlags?.length || 0;
+    if (currentPlayer && Array.isArray(currentPlayer.capturedFlags)) {
+      const capturedCount = currentPlayer.capturedFlags.length;
+      console.log(`Syncing captured flags count: ${capturedCount}`);
       setCapturedFlagsCount(capturedCount);
+    } else if (currentPlayer) {
+      // Fallback to calculating captured flags from flags array if available
+      if (Array.isArray(flags)) {
+        const capturedFlags = flags.filter(f => f.status === 'captured' && f.capturedBy === currentPlayer.id);
+        setCapturedFlagsCount(capturedFlags.length);
+      } else {
+        // Reset to 0 if no data is available
+        setCapturedFlagsCount(0);
+      }
     }
-  }, [currentPlayer, session]);
+  }, [currentPlayer, flags]);
 
   // WebSocket connection
   useEffect(() => {
@@ -176,22 +264,55 @@ const Game: React.FC = () => {
   // Event handlers
   const handleFlagCapture = useCallback((flagId: string) => {
     if (!currentPlayer || !session) return;
-
-    // Call the captureFlag action
+  
+    console.log("Capturing flag:", flagId);
+    
+    // Force immediate UI update for better responsiveness
+    setCapturedFlagsCount(prevCount => {
+      const newCount = prevCount + 1;
+      console.log(`Flags captured: ${newCount} of ${flags.length}`);
+      
+      // Check if all flags are captured
+      if (newCount >= flags.length) {
+        setIsGameOver(true);
+      }
+      
+      return newCount;
+    });
+    
+    // Update local state FIRST
+    // This is critical - we must update our local flags array
+    setFlags(prevFlags => {
+      const updatedFlags = prevFlags.map(f => 
+        f.id === flagId 
+          ? { ...f, status: 'captured', capturedBy: currentPlayer.id } 
+          : f
+      );
+      console.log("Updated flags array:", updatedFlags);
+      return updatedFlags;
+    });
+    
+    // Then update the store
     captureFlag(flagId);
     
-    // Use the difficulty-specific sound
+    // Play capture sound
     const difficulty = session?.settings?.difficulty || 'medium';
     playFlagCaptureSound(difficulty as 'easy' | 'medium' | 'hard');
+  }, [currentPlayer, session, flags.length, captureFlag, playFlagCaptureSound]);
 
-    // Update captured flags count
-    const newCapturedCount = capturedFlagsCount + 1;
-    setCapturedFlagsCount(newCapturedCount);
+  // Add a debug effect to log when flag count changes
+  useEffect(() => {
+    console.log(`Flag count updated to: ${capturedFlagsCount}`);
+  }, [capturedFlagsCount]);
 
-    if (newCapturedCount >= flags.length) {
-      setIsGameOver(true);
+  // Monitor for captured flags changes explicitly
+  useEffect(() => {
+    const capturedFlags = flags.filter(f => f.status === 'captured');
+    if (capturedFlags.length !== capturedFlagsCount) {
+      console.log(`Updating flag count from ${capturedFlagsCount} to ${capturedFlags.length}`);
+      setCapturedFlagsCount(capturedFlags.length);
     }
-  }, [currentPlayer, session, flags.length, captureFlag, playFlagCaptureSound, capturedFlagsCount]);
+  }, [flags, capturedFlagsCount]);
 
   const handlePlayerMove = useCallback((position: Position) => {
     if (!currentPlayer || !session) return;
