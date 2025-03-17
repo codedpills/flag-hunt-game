@@ -177,6 +177,7 @@ const Game: React.FC = () => {
   const handleFlagCapture = useCallback((flagId: string) => {
     if (!currentPlayer || !session) return;
 
+    // Call the captureFlag action
     captureFlag(flagId);
     
     // Use the difficulty-specific sound

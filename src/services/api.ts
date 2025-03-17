@@ -22,29 +22,22 @@ export const api = {
       if (sessionError) throw sessionError;
       
       // Create flags for the session
-      const flags: Flag[] = [];
-      const flagInserts = [];
+      const flags: Flag[] = Array.from({ length: settings.flagCount || 10 }, (_, i) => ({
+        id: `flag-${Date.now()}-${i}`,
+        position: null, // We'll assign positions in the game
+        status: 'available', // 'available', 'captured'
+        capturedBy: null,
+        capturedAt: null,
+      }));
       
-      for (let i = 0; i < settings.flagCount; i++) {
-        const flagId = `flag-${i}-${sessionId}`;
-        const position = { 
-          x: Math.floor(Math.random() * 2000) - 1000, 
-          y: Math.floor(Math.random() * 2000) - 1000 
-        };
-        
-        flags.push({
-          id: flagId,
-          position,
-          status: 'available',
-        });
-        
-        flagInserts.push({
-          id: flagId,
-          session_id: sessionId,
-          position,
-          status: 'available',
-        });
-      }
+      const flagInserts = flags.map(flag => ({
+        id: flag.id,
+        session_id: sessionId,
+        position: flag.position,
+        status: flag.status,
+        captured_by: flag.capturedBy,
+        captured_at: flag.capturedAt,
+      }));
       
       // Insert flags in batches to avoid payload size limits
       const batchSize = 50;

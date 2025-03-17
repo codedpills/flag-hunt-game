@@ -301,7 +301,41 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
     });
     
     setMapObjects(updatedObjects);
-  }, [flags]);
+  }, [flags, mapObjects]);
+
+  // Replace the forced flag assignment with a cleaner version
+  useEffect(() => {
+    if (flags?.length > 0 && mapObjects.length > 0) {
+      // Create a deep copy of map objects
+      const updatedObjects = [...mapObjects];
+      
+      // Reset flag assignments
+      updatedObjects.forEach(obj => {
+        obj.hasFlag = false;
+        obj.flagId = undefined;
+      });
+      
+      // Assign available flags to random objects
+      const availableFlags = flags.filter(f => f.status === 'available');
+      const availableObjects = updatedObjects.filter(obj => !obj.flagCaptured);
+      
+      availableFlags.forEach(flag => {
+        if (availableObjects.length > 0) {
+          const randomIndex = Math.floor(Math.random() * availableObjects.length);
+          const selectedObj = availableObjects.splice(randomIndex, 1)[0];
+          
+          // Find this object in our updatedObjects array
+          const objIndex = updatedObjects.findIndex(o => o.id === selectedObj.id);
+          if (objIndex !== -1) {
+            updatedObjects[objIndex].hasFlag = true;
+            updatedObjects[objIndex].flagId = flag.id;
+          }
+        }
+      });
+      
+      setMapObjects(updatedObjects);
+    }
+  }, [flags, mapObjects]);
   
   // Handle canvas resize
   useEffect(() => {
@@ -666,18 +700,31 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
           const flag = flags?.find(f => f.id === obj.flagId);
           
           if (flag && flag.status === 'available') {
-            // Draw a subtle indicator
-            ctx.fillStyle = gameMode === 'red-flag' ? 'rgba(255, 0, 0, 0.5)' : 'rgba(255, 215, 0, 0.5)';
+            // Draw a subtle glow based on difficulty
+            ctx.shadowBlur = glowEffects[difficulty].radius;
+            ctx.shadowColor = glowEffects[difficulty].color;
+            ctx.fillStyle = gameMode === 'red-flag' ? 'rgba(255, 0, 0, 0.3)' : 'rgba(255, 215, 0, 0.3)';
             ctx.beginPath();
-            ctx.arc(objX + obj.size.width / 2, objY + obj.size.height / 2, 15, 0, Math.PI * 2);
+            ctx.arc(objX + obj.size.width / 2, objY + obj.size.height / 2, 20, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            // Draw flag icon
+            ctx.fillStyle = gameMode === 'red-flag' ? '#ff0000' : '#ffcc00';
+            ctx.beginPath();
+            ctx.moveTo(objX + obj.size.width / 2 - 5, objY + obj.size.height / 2 - 15);
+            ctx.lineTo(objX + obj.size.width / 2 + 10, objY + obj.size.height / 2 - 8);
+            ctx.lineTo(objX + obj.size.width / 2 - 5, objY + obj.size.height / 2 - 2);
+            ctx.lineTo(objX + obj.size.width / 2 - 5, objY + obj.size.height / 2 + 10);
+            ctx.closePath();
             ctx.fill();
             
-            // Add a pulsing effect
-            const pulseSize = 15 + Math.sin(Date.now() / 200) * 3;
-            ctx.beginPath();
-            ctx.arc(objX + obj.size.width / 2, objY + obj.size.height / 2, pulseSize, 0, Math.PI * 2);
-            ctx.strokeStyle = gameMode === 'red-flag' ? 'rgba(255, 0, 0, 0.8)' : 'rgba(255, 215, 0, 0.8)';
+            // Draw flag pole
+            ctx.strokeStyle = '#000';
             ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(objX + obj.size.width / 2 - 5, objY + obj.size.height / 2 - 15);
+            ctx.lineTo(objX + obj.size.width / 2 - 5, objY + obj.size.height / 2 + 15);
             ctx.stroke();
           }
         }
@@ -1185,25 +1232,9 @@ const MapCanvas: React.FC<MapCanvasProps> = ({
         tabIndex={0} // Make canvas focusable
         style={{ outline: 'none' }} // Remove focus outline
       />
-      {/* Debug overlay */}
-      <div className="absolute bottom-4 left-4 bg-black bg-opacity-75 p-2 text-white text-xs z-50">
-        <div>Player: {JSON.stringify(playerPosition)}</div>
-        <div>Moving: {isMoving ? 'Yes' : 'No'}</div>
-        <div>Target: {isMoving && targetPosition ? JSON.stringify(targetPosition) : 'None'}</div>
-        <button 
-          onClick={() => {
-            // Force movement test
-            const newTarget = {
-              x: playerPosition.x + 50,
-              y: playerPosition.y + 50
-            };
-            setTargetPosition(newTarget);
-            setIsMoving(true);
-          }}
-          className="mt-1 px-2 py-1 bg-blue-600 rounded text-white"
-        >
-          Test Move
-        </button>
+      {/* Remove or simplify debug overlay - just keep minimal info */}
+      <div className="absolute bottom-4 right-4 bg-black bg-opacity-50 p-2 text-white text-xs rounded">
+        <div>Flags: {flags?.length || 0} | Captured: {flags?.filter(f => f.status === 'captured').length || 0}</div>
       </div>
     </div>
   );
